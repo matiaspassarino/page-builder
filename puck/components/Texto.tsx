@@ -1,4 +1,5 @@
 import type { ComponentConfig } from "@puckeditor/core";
+import { colorField } from "../fields/ColorField";
 
 export type TextoProps = {
   texto: string;
@@ -23,7 +24,7 @@ export const Texto: ComponentConfig<TextoProps> = {
       ],
     },
     tamano: { type: "number", label: "Tamaño (px)", min: 8, max: 160 },
-    color: { type: "text", label: "Color", placeholder: "#111111" },
+    color: colorField("Color"),
     alineacion: {
       type: "radio",
       label: "Alineación",

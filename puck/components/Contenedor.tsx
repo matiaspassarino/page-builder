@@ -1,5 +1,6 @@
 import type { ComponentConfig, Slot } from "@puckeditor/core";
 import type { CSSProperties } from "react";
+import { colorField } from "../fields/ColorField";
 
 type Justificar = "start" | "center" | "end" | "space-between";
 type Alinear = "stretch" | "start" | "center" | "end";
@@ -76,7 +77,7 @@ export const Contenedor: ComponentConfig<ContenedorProps> = {
     },
     gap: { type: "number", label: "Gap (px)", min: 0 },
     padding: { type: "number", label: "Padding (px)", min: 0 },
-    fondo: { type: "text", label: "Fondo", placeholder: "#ffffff" },
+    fondo: colorField("Fondo"),
     maxWidth: {
       type: "number",
       label: "Ancho máximo (px, 0 = sin límite)",
