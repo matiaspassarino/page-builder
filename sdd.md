@@ -17,14 +17,17 @@ Trabajá de a una fase por vez. Al terminar cada fase: corré `npm run build` y 
 Validar en local el núcleo de un page builder: editar páginas visualmente con componentes configurables, guardarlas como JSON y renderizarlas como sitio público. No es producción: no hay auth, multi-tenant ni deploy.
 
 ### 2. Stack
-- Next.js (App Router) + TypeScript, generado con `npx create-puck-app` (recipe `next`).
-- `@puckeditor/core` para editor (`<Puck>`) y render (`<Render>`).
+- Next.js 16 (App Router) + TypeScript (`strict: true`), generado con `npx create-puck-app` (recipe `next`, sin Puck AI).
+- `@puckeditor/core` 0.23 para editor (`<Puck>`) y render (`<Render>`).
+- Node 24 LTS, fijado en `.node-version` y en `engines` (`>=24`). En local se gestiona con `fnm` (`--use-on-cd`).
+- ESLint 9 con `eslint-config-next` (core-web-vitals + typescript).
 - Estilos de componentes con inline styles / CSS variables. Sin Tailwind dentro de los componentes del builder.
 - Persistencia local en archivo JSON, detrás de una capa de repositorio (ver §5).
 
 ### 3. Alcance (in scope)
-- Editor en `/[...slug]/edit` y página pública en `/[...slug]` (lo que trae la recipe).
-- Listado simple de páginas en `/` con link a ver/editar y botón "Nueva página" (pide slug).
+- Editor en `/<slug>/edit` y página pública en `/<slug>` (esquema de la recipe, ver §6).
+- Listado simple de páginas en `/` con links a ver/editar, botón "Borrar" (con confirmación) y formulario "Nueva página" (pide slug).
+- Slugs: minúsculas, números y guiones; subpáginas separadas con `/` (`blog/post-1`). Reservados: `puck`, `api` y `_next` como primer segmento, y `edit` en cualquier segmento. El slug se fija al crear la página y no cambia al editar el título.
 - Componentes:
   - **Contenedor**: `slot` de contenido + `display` (block/flex/grid), `direccion` (row/column), `columnas` (1–6, para grid), `gap`, `padding`, `fondo` (color), `maxWidth`, `alineacion` (justify/align). Debe poder anidarse.
   - **Texto**: `texto` (textarea), `tag` (p/h1/h2/h3), `tamano`, `color`, `alineacion`.
@@ -34,11 +37,12 @@ Validar en local el núcleo de un page builder: editar páginas visualmente con 
 - Root config: título de la página y color de fondo general.
 
 ### 4. Fuera de alcance
-Auth, usuarios, multi-tenant, dominios, subida de imágenes (se usan URLs), responsive por breakpoint, undo/redo propio (usar el de Puck), Supabase, deploy.
+Auth, usuarios, multi-tenant, dominios, subida de imágenes (se usan URLs), responsive por breakpoint, undo/redo propio (usar el de Puck), Supabase, deploy, renombrar el slug de una página existente (pendiente, baja prioridad).
 
 ### 5. Modelo de datos y persistencia
 - Una página = `{ slug: string, data: Data, updatedAt: string }`, donde `Data` es el tipo de Puck.
-- Guardado en `data/pages.json` (o el archivo que use la recipe, unificado).
+- Guardado en `data/pages.json` como un array de páginas (misma forma que filas de una tabla). Reemplaza al `database.json` de la recipe. El archivo no se versiona en git y se crea con la primera página.
+- `slug` es la ruta sin `/` inicial (`contacto`, `blog/post-1`). El título de la página vive en `data.root.props.title`.
 - **Toda lectura/escritura pasa por `lib/pages-repo.ts`** con esta interfaz:
   ```ts
   interface PagesRepo {
@@ -48,23 +52,33 @@ Auth, usuarios, multi-tenant, dominios, subida de imágenes (se usan URLs), resp
     remove(slug: string): Promise<void>;
   }
   ```
-  La implementación inicial es `FilePagesRepo`. Objetivo: después reemplazarla por `SupabasePagesRepo` sin tocar UI ni rutas.
-- `onPublish` del editor llama a un endpoint/server action que usa el repo.
+  La implementación inicial es `FilePagesRepo`. Objetivo: después reemplazarla por `SupabasePagesRepo` sin tocar UI ni rutas (se cambia solo la instancia exportada `pagesRepo`).
+- `FilePagesRepo` escribe de forma atómica (archivo temporal + `rename`) y serializa las escrituras con una cola en memoria. Alcanza para un único proceso de servidor.
+- Las escrituras pasan por server actions en `app/actions.ts`, que validan slug y datos antes de usar el repo:
+  - `savePage(slug, data)`: la llama `onPublish` del editor.
+  - `createPage(formData)`: la usa el formulario "Nueva página". Guarda una página vacía y redirige al editor.
+  - `deletePage(slug)`: la usa el botón "Borrar".
+- Caché: la página pública es `force-static` y se invalida con `revalidatePath` al guardar o borrar. El listado y el editor son dinámicos.
 
-### 6. Estructura sugerida
+### 6. Estructura
 ```
+proxy.ts                         # reescribe /<slug>/edit -> /puck/<slug>; bloquea /puck directo
 app/
-  page.tsx                  # listado de páginas
-  [...slug]/page.tsx        # render público
-  [...slug]/edit/page.tsx   # editor
+  page.tsx                       # listado de páginas
+  actions.ts                     # server actions: savePage, createPage, deletePage
+  _components/                   # formulario "Nueva página" y botón "Borrar"
+  [...puckPath]/page.tsx         # render público (force-static)
+  puck/[...puckPath]/page.tsx    # editor (force-dynamic)
 puck/
-  config.tsx                # config raíz que junta todo
-  components/               # un archivo por componente (fields + defaultProps + render)
-  fields/ColorField.tsx     # campo custom de color
+  config.tsx                     # config raíz que junta todo (incluye root: título y fondo)
+  components/                    # Contenedor, Texto, Imagen, Boton (fields + defaultProps + render)
+  fields/ColorField.tsx          # campo custom de color
 lib/
-  pages-repo.ts             # interfaz + FilePagesRepo
+  pages-repo.ts                  # interfaz + FilePagesRepo
+  slug.ts                        # validación y normalización de slugs
+  page-data.ts                   # página vacía, título y chequeo de forma de Data
 data/
-  pages.json
+  pages.json                     # no versionado
 ```
 
 ### 7. Criterios de aceptación
@@ -116,3 +130,20 @@ Criterio de salida: `node -v` cumple el mínimo, `npm ping` responde y `npx crea
 ### 9. Notas
 - Explicame brevemente las decisiones de backend (rutas API, server actions, manejo de archivos): estoy aprendiendo esa parte.
 - Si algo del SDD choca con cómo funciona Puck hoy, avisame y proponé la alternativa antes de improvisar.
+
+### 10. Desvíos respecto al SDD original
+Cambios acordados durante la implementación, con su motivo:
+
+- **Rutas del editor**: `app/[...slug]/edit/page.tsx` no es posible en Next (un catch-all tiene que ser el último segmento). Se usa el esquema de la recipe: `proxy.ts` reescribe `/<slug>/edit` a `app/puck/[...puckPath]`. La URL que ve el usuario es la misma.
+- **Persistencia**: se reemplazó `database.json` + `lib/get-page.ts` + la ruta `/puck/api` de la recipe por `data/pages.json` detrás de `lib/pages-repo.ts`.
+- **Endpoint de publicación**: server actions en lugar de la ruta de API de la recipe (llamadas tipadas, sin `fetch` manual).
+- **`/` no es una página editable**: la recipe la renderizaba como página de Puck; ahora es el listado.
+- **Botón "Borrar" en el listado**: agregado para usar `remove()` del repo.
+- **Escritura atómica y cola de escrituras** en `FilePagesRepo` (la recipe escribía directo con `writeFileSync`).
+- **Arreglos sobre el scaffold**: se quitó `app/favicon.ico` (la plantilla trae un ICO que Next 16.4 no decodifica y rompe el build); se reemplazó el tsconfig de la recipe, que desactivaba `strict`; se configuró ESLint, porque la recipe dependía de `eslint-config-custom`, un paquete interno del monorepo de Puck.
+- **Botón**: el link se desactiva en el editor y solo acepta `http(s)`, `mailto:`, `tel:`, rutas internas y anclas (evita `javascript:`). `colorTexto` aplica a la variante primaria; la secundaria usa el color principal para borde y texto.
+- **Imagen**: usa `<img>` y no `next/image`, porque las URLs son arbitrarias y `next/image` exige declarar cada dominio.
+
+Limitaciones conocidas:
+- Puck envuelve cada hijo de un slot en un `div`. En un Contenedor flex en fila, el ancho en % de una Imagen se calcula contra ese `div`. Se puede resolver con `inline: true` si hace falta.
+- Los campos de flex y de grid del Contenedor se ven siempre, sea cual sea el display (se podrían ocultar con `resolveFields`).
