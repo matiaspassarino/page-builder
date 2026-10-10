@@ -1,55 +1,35 @@
 /**
- * This file implements a *magic* catch-all route that renders the Puck editor.
+ * Editor de Puck. Esta ruta (/puck/<slug>) no se visita directo: proxy.ts
+ * reescribe /<slug>/edit hacia acá y redirige cualquier acceso a /puck.
  *
- * This route exposes /puck/[...puckPath], but is disabled by middleware.ts. The middleware
- * then rewrites all URL requests ending in `/edit` to this route, allowing you to visit any
- * page in your application and add /edit to the end to spin up a Puck editor.
- *
- * This approach enables public pages to be statically rendered whilst the /puck route can
- * remain dynamic.
- *
- * NB this route is public, and you will need to add authentication
+ * Es dinámica para leer siempre la última versión guardada.
+ * NB: no tiene autenticación.
  */
 
 import "@puckeditor/core/puck.css";
-import type { Data } from "@puckeditor/core";
-import { Metadata } from "next";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { emptyPageData } from "@/lib/page-data";
+import { pagesRepo } from "@/lib/pages-repo";
+import { slugToPath, validateSlug } from "@/lib/slug";
 import { Client } from "./client";
-import { getPage } from "../../../lib/get-page";
 
-// Empty data for new pages.
-const EMPTY_PAGE_DATA: Data = {
-  content: [],
-  root: {
-    props: {
-      title: "",
-    },
-  },
-};
+type Props = { params: Promise<{ puckPath: string[] }> };
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ puckPath: string[] }>;
-}): Promise<Metadata> {
-  const { puckPath = [] } = await params;
-  const path = `/${puckPath.join("/")}`;
-
-  return {
-    title: "Puck: " + path,
-  };
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { puckPath } = await params;
+  return { title: `Editando ${slugToPath(puckPath.join("/"))}` };
 }
 
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ puckPath: string[] }>;
-}) {
-  const { puckPath = [] } = await params;
-  const path = `/${puckPath.join("/")}`;
-  const data = getPage(path);
+export default async function Page({ params }: Props) {
+  const { puckPath } = await params;
+  const slug = puckPath.join("/");
 
-  return <Client path={path} data={data || EMPTY_PAGE_DATA} />;
+  if (validateSlug(slug) !== null) notFound();
+
+  const page = await pagesRepo.get(slug);
+
+  return <Client slug={slug} data={page?.data ?? emptyPageData()} />;
 }
 
 export const dynamic = "force-dynamic";

@@ -33,3 +33,7 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# datos locales del page builder
+/data/pages.json
+/data/*.tmp
