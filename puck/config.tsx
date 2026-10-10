@@ -1,8 +1,17 @@
 import type { Config } from "@puckeditor/core";
+import { Contenedor, type ContenedorProps } from "./components/Contenedor";
+import { Texto, type TextoProps } from "./components/Texto";
 
-// Los componentes se registran acá a medida que se agregan en puck/components/.
-export const config: Config = {
-  components: {},
+type Components = {
+  Contenedor: ContenedorProps;
+  Texto: TextoProps;
+};
+
+export const config: Config<Components> = {
+  components: {
+    Contenedor,
+    Texto,
+  },
 };
 
 export default config;
